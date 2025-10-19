@@ -1,0 +1,77 @@
+syntax = 'proto3';
+
+message Receive {
+    EventData header = 1;
+    Data event = 2;
+}
+
+message EventData {
+    string event_id = 1;
+    string event_type = 2;
+}
+message EventNameData {
+    EventData event = 1;
+}
+message Data {
+    string event_name = 1;
+    MessageData message = 2;
+}
+
+message MessageData {
+    string msg_id = 1;
+    SenderData sender = 2;
+    string recv_id = 3;
+    string chat_id = 4;
+    int32 chat_type = 5;
+    ContentData content = 6;
+    int32 content_type = 7;
+    int64 send_time = 8;
+    CommandData command = 9;
+    int64 recall_time = 10;
+    string quote_msg_id = 11; // 引用消息ID
+    int32 msg_count = 12;
+}
+
+message CommandData {
+    int32 command_id = 1;
+    string command_name = 2;
+}
+
+message SenderData {
+    string sender_id = 1;
+    int32 sender_type = 2;
+    string sender_nick_name = 3;
+    string sender_avatar_url = 4;
+    int32 is_vip = 5;
+    repeated string tag_name = 6;
+    repeated TagData tag = 7;
+}
+
+message TagData {
+    int32 tag_id = 1;
+    string group_id = 2;
+    string tag_name = 3;
+    string tag_color = 4;
+}
+
+message ContentData {
+    string text = 1;
+    string button = 2;
+    string image_url = 3;
+    string file_name = 4;
+    string file_url = 5;
+    repeated string at = 6;
+    string form_json = 7;
+    string quote_msg_text = 8;
+    string image_name = 9;
+    string post_id = 10;
+    string post_title = 11;
+    string post_content = 12;
+    int32 post_content_type = 13;
+    string video_url = 19;
+    string audio_url = 21;
+    int32 sticker_count = 25;
+    int32 stricker_id = 26;
+    int32 image_width = 33;
+    int32 image_height = 34;
+}

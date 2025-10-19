@@ -14,14 +14,13 @@ import ws
 import api
 # -------------------------
 from screeninfo import get_monitors # 导入获取屏幕尺寸的库
-import sqlite3 # 导入 sqlite3
-import os
+# import sqlite3 # 删除数据库相关导入
+# import os      # 删除数据库相关导入
 
 def get_screen_size_screeninfo():
     monitors = get_monitors()
     primary_monitor = monitors[0]  # 获取主显示器
     return primary_monitor.width, primary_monitor.height
-
 class ChatApp:
     def __init__(self):
         self.page = None
@@ -54,63 +53,10 @@ class ChatApp:
         self.jump_to_unread_button = None
         # --- 新增：用于存储当前加载的消息总数 ---
         self.current_loaded_count = 0 # 用于跳转逻辑，但不依赖数据库
-        # --- 新增：数据库连接 ---
-        self.db_path = "avatar_cache.db"
-        self.init_db()
-        # --- 新增：记录正在下载的头像URL，避免重复下载 ---
-        self.avatar_downloading = set()
-        # --- 新增：记录下载失败的用户ID，避免重复下载 ---
-        self.avatar_failed = set()
-        # --- 新增：同步锁 ---
-        self.avatar_lock = threading.Lock()
 
-
-    def init_db(self):
-        """初始化 SQLite 数据库和头像缓存表"""
-        try:
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS user_avatars (
-                    user_id TEXT PRIMARY KEY,
-                    avatar_base64 TEXT NOT NULL
-                )
-            ''')
-            conn.commit()
-            conn.close()
-            print(f"头像缓存数据库 {self.db_path} 初始化成功。")
-        except sqlite3.Error as e:
-            print(f"头像缓存数据库初始化失败: {e}")
-
-    def get_cached_avatar(self, user_id: str) -> str:
-        """从数据库获取指定用户的缓存头像Base64数据"""
-        try:
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
-            cursor.execute('SELECT avatar_base64 FROM user_avatars WHERE user_id = ?', (user_id,))
-            row = cursor.fetchone()
-            conn.close()
-            if row:
-                return row[0]
-            return None
-        except sqlite3.Error as e:
-            print(f"查询头像缓存失败: {e}")
-            return None
-
-    def cache_avatar(self, user_id: str, avatar_base64: str):
-        """将用户ID和头像Base64数据缓存到数据库"""
-        try:
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
-            cursor.execute('''
-                INSERT OR REPLACE INTO user_avatars (user_id, avatar_base64)
-                VALUES (?, ?)
-            ''', (user_id, avatar_base64))
-            conn.commit()
-            conn.close()
-            print(f"缓存头像数据: user_id={user_id}")
-        except sqlite3.Error as e:
-            print(f"缓存头像数据失败: {e}")
+    # --- 删除 init_db 方法 ---
+    # --- 删除 get_last_read_info 方法 ---
+    # --- 删除 update_last_read_info 方法 ---
 
 
     def main(self, page: ft.Page):
@@ -608,12 +554,9 @@ class ChatApp:
                                     continue  # 跳过没有文本内容的消息
                                 data = {"text": message_text}
                             
-                            # --- 添加引用和头像信息 ---
                             data['quote_msg'] = msg_pb.content.quote_msg_text
                             data['quote_id'] = msg_pb.quote_msg_id
                             data['avatar_url'] = msg_pb.sender.avatar_url
-                            data['user_id'] = sender_id # 用于缓存，使用发送者的ID
-
                             message_bubble = self.create_message_bubble(data, sender_name, is_me, timestamp=timestamp_str, content_type=content_type)
                             self.message_list_view.controls.append(message_bubble)
                             loaded_count += 1
@@ -694,62 +637,35 @@ class ChatApp:
         self.load_remote_messages(self.current_chat_id, self.current_chat_type, from_jump=True)
 
 
-    def download_image_thread(self, image_url, callback, referer="https://myapp.jwznb.com/ "):
+    def download_image_thread(self, image_url, callback, referer="https://myapp.jwznb.com/"):
         """在多线程中下载图片"""
         def download():
             try:
                 print(f"开始下载图片: {image_url}")
                 headers = {
-                    "Referer": 'https://myapp.jwznb.com ',
+                    "Referer": referer,
                     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
                 }
-
+                
                 with httpx.Client(headers=headers, timeout=30.0) as client:
-                    # 首先发送 HEAD 请求获取内容长度
-                    head_response = client.head(image_url)
-                    content_length_str = head_response.headers.get("Content-Length")
-                    
-                    if content_length_str:
-                        content_length = int(content_length_str)
-                        max_size = 50 * 1024 * 1024  # 50MB in bytes
-                        if content_length > max_size:
-                            print(f"图片过大，超过50MB，取消下载。大小: {content_length} bytes, URL: {image_url}")
-                            callback(None, image_url)  # 返回失败
-                            return
-                    else:
-                        print(f"无法获取图片大小，继续下载: {image_url}")
-                        # 如果无法获取大小，可以选择取消或继续下载完整内容来检查大小
-                        # 这里选择继续，但你可能需要根据需求调整
-                        # 或者可以设置一个非常大的预期大小来流式下载并检查
-                    
-                    # 执行实际下载
                     response = client.get(image_url)
                     response.raise_for_status()
-
-                    # 再次检查下载的内容大小（双重保险）
-                    downloaded_size = len(response.content)
-                    if downloaded_size > 50 * 1024 * 1024:
-                        print(f"下载的图片实际大小超过50MB，取消处理。大小: {downloaded_size} bytes, URL: {image_url}")
-                        callback(None, image_url) # 返回失败
-                        return
-
-                    print(f"图片下载成功，大小: {downloaded_size} bytes")
+                    print(f"图片下载成功，大小: {len(response.content)} bytes")
                     
                     # 将图片数据转换为base64
                     image_data = base64.b64encode(response.content).decode('utf-8')
                     base64_src = f"image/jpeg;base64,{image_data}"
                     print(f"图片base64编码完成，准备回调")
                     callback(base64_src, image_url)
-
+                    
             except Exception as e:
                 print(f"图片下载失败 {image_url}: {e}")
                 callback(None, image_url)
-
+        
         thread = threading.Thread(target=download)
         thread.daemon = True  # 设置为守护线程
         thread.start()
         print(f"下载线程已启动: {image_url}")
-
 
     def create_message_bubble(self, data, user, is_me, timestamp="", content_type=1):
         """创建一个消息气泡控件，支持文本、Markdown、图片、引用消息和头像"""
@@ -780,11 +696,8 @@ class ChatApp:
         # --- 检查并处理头像 ---
         avatar_image = None
         avatar_url = data.get("avatar_url")
-        user_id_for_avatar = data.get("user_id") # 假设data中包含发送者的user_id用于缓存
-        
-        if avatar_url and user_id_for_avatar: # 确保URL和user_id都存在
-            print(f"创建头像: {avatar_url}, user_id: {user_id_for_avatar}")
-            
+        if avatar_url:
+            print(f"创建头像: {avatar_url}")
             # 创建图片控件，初始显示加载状态或默认头像
             avatar_container = ft.Container(
                 width=30, # 设置头像宽度
@@ -796,88 +709,38 @@ class ChatApp:
             )
             avatar_image = avatar_container
 
-            # --- 在锁块外声明变量 ---
-            download_started = False
-
-            # 使用锁来同步对 avatar_downloading 和 avatar_failed 集合的访问
-            with self.avatar_lock:
-                # 首先尝试从缓存加载
-                cached_avatar_b64 = self.get_cached_avatar(user_id_for_avatar)
-                if cached_avatar_b64:
-                    print(f"从缓存加载头像: {user_id_for_avatar}")
-                    new_avatar_img = ft.Image(
-                        src_base64=cached_avatar_b64.split(',')[1], # 去掉data:image/jpeg;base64,前缀
-                        width=30,
-                        height=30,
-                        fit=ft.ImageFit.COVER, # 裁剪填充
-                        border_radius=15, # 确保图片也是圆形
-                    )
-                    avatar_container.content = new_avatar_img
+            # 定义头像更新回调函数
+            def update_avatar_image(base64_src, downloaded_url):
+                print(f"头像回调函数执行: downloaded_url={downloaded_url}, base64_src={base64_src is not None}")
+                if downloaded_url == avatar_url:  # 确保是同一个图片
+                    if base64_src:
+                        print(f"更新头像显示: {downloaded_url}")
+                        # 创建新的图片控件
+                        new_avatar_img = ft.Image(
+                            src_base64=base64_src.split(',')[1],
+                            width=30,
+                            height=30,
+                            fit=ft.ImageFit.COVER, # 裁剪填充
+                            border_radius=15, # 确保图片也是圆形
+                        )
+                        # 更新容器内容
+                        avatar_container.content = new_avatar_img
+                    else:
+                        print(f"头像加载失败: {downloaded_url}")
+                        # 加载失败保持默认图标或显示错误信息
+                        avatar_container.content = ft.Icon(ft.Icons.PERSON_OFF, size=20, color=ft.Colors.RED)
+                    
+                    # 刷新页面
                     if hasattr(self, 'page') and self.page:
+                        print("调用 page.update() 更新头像")
                         self.page.update()
-                elif user_id_for_avatar in self.avatar_failed:
-                    # 如果之前下载失败过，直接显示失败图标
-                    print(f"头像之前加载失败，显示失败图标: {user_id_for_avatar}")
-                    avatar_container.content = ft.Icon(ft.Icons.PERSON_OFF, size=20, color=ft.Colors.RED)
-                    if hasattr(self, 'page') and self.page:
-                        self.page.update()
-                elif user_id_for_avatar not in self.avatar_downloading:
-                    # 如果缓存中没有，且之前没有失败过，且没有正在下载，则开始下载
-                    print(f"缓存中未找到头像，开始下载: {user_id_for_avatar}")
-                    self.avatar_downloading.add(user_id_for_avatar) # 标记为正在下载
-                    download_started = True # --- 在锁块内修改变量 ---
-                else:
-                    # 如果正在下载中，保持默认图标
-                    print(f"头像正在下载中，保持默认图标: {user_id_for_avatar}")
-                    # download_started 保持 False
+                    else:
+                        print("page 不存在，无法更新头像")
 
-            # 如果需要开始下载，就在锁外启动线程，避免长时间持有锁
-            if download_started: # --- 现在可以在锁外安全访问 ---
-                # 定义头像更新回调函数
-                def update_avatar_image(base64_src, downloaded_url):
-                    print(f"头像回调函数执行: downloaded_url={downloaded_url}, base64_src={base64_src is not None}")
-                    if downloaded_url == avatar_url:  # 确保是同一个图片
-                        with self.avatar_lock:
-                            if base64_src:
-                                print(f"更新头像显示: {downloaded_url}")
-                                # 创建新的图片控件
-                                new_avatar_img = ft.Image(
-                                    src_base64=base64_src.split(',')[1],
-                                    width=30,
-                                    height=30,
-                                    fit=ft.ImageFit.COVER, # 裁剪填充
-                                    border_radius=15, # 确保图片也是圆形
-                                )
-                                # 更新容器内容
-                                avatar_container.content = new_avatar_img
-                                # 缓存下载的头像数据
-                                self.cache_avatar(user_id_for_avatar, base64_src)
-                                # 从失败集合中移除（如果之前在）
-                                self.avatar_failed.discard(user_id_for_avatar)
-                            else:
-                                print(f"头像加载失败: {downloaded_url}")
-                                # 加载失败保持默认图标或显示错误信息
-                                avatar_container.content = ft.Icon(ft.Icons.PERSON_OFF, size=20, color=ft.Colors.RED)
-                                # 记录失败的用户ID，避免重复下载
-                                self.avatar_failed.add(user_id_for_avatar)
-                        
-                        # 无论成功失败，都从下载集合中移除
-                        # 注意：移除操作也应该在锁内，但为了效率，我们放在锁外，这通常是可以接受的，
-                        # 因为即使有竞争，也只是可能导致短时间内集合里有重复项，很快会被清理。
-                        # 但为了绝对安全，也可以放在锁内。
-                        with self.avatar_lock:
-                            self.avatar_downloading.discard(user_id_for_avatar)
-                        
-                        # 刷新页面
-                        if hasattr(self, 'page') and self.page:
-                            print("调用 page.update() 更新头像")
-                            self.page.update()
-                        else:
-                            print("page 不存在，无法更新头像")
+            # 启动头像下载线程，使用与图片消息相同的下载方法
+            # 注意：这里没有设置 referer，可能需要根据实际情况调整
+            self.download_image_thread(avatar_url, update_avatar_image) # 或者传入合适的 referer
 
-                # 启动头像下载线程，使用与图片消息相同的下载方法
-                # 注意：这里没有设置 referer，可能需要根据实际情况调整
-                self.download_image_thread(avatar_url, update_avatar_image, referer="") # 或者传入合适的 referer
         
         # 根据 content_type 选择主内容控件
         if content_type == 3:  # Markdown 类型
@@ -893,7 +756,7 @@ class ChatApp:
             content_widget = ft.WebView(
                 enable_javascript=False,
                 expand=True,
-                url=f"text/html;charset=utf-8;base64,{base64.b64encode(data['text'].encode('utf-8')).decode()}"
+                url=f"data:text/html;charset=utf-8;base64,{base64.b64encode(data['text'].encode('utf-8')).decode()}"
             )
         elif content_type == 2:  # 图片类型
             # 检查图片URL是否存在
@@ -1087,12 +950,9 @@ class ChatApp:
                         "text": message_text
                     }
                 
-                # --- 添加引用和头像信息 ---
                 data['quote_id'] = msg_info.get("quote_msg_id", "")
                 data['quote_msg'] = msg_info.get("quote_msg_text", "")
                 data['avatar_url'] = msg_info.get("sender_avatar", "")
-                data['user_id'] = sender_id # 使用发送者的ID
-
                 # 创建并添加消息气泡（传入 content_type）
                 message_bubble = self.create_message_bubble(
                     data, 

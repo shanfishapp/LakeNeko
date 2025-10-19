@@ -200,8 +200,15 @@ class WebSocketHandler:
                 "content_type": message_data.content_type,  # 确保包含 content_type
                 "sender_id": message_data.sender.sender_id,
                 "sender_name": message_data.sender.sender_nick_name,
-                "content": message_data.content.text,
-                "quote_msg_id": getattr(message_data, 'quote_msg_id', None),
+                "sender_avatar": message_data.sender.sender_avatar_url,
+                "content": {
+                    "text": message_data.content.text,
+                    "image_url": message_data.content.image_url,
+                    "image_width": message_data.content.image_width,
+                    "image_height": message_data.content.image_height
+                },
+                "quote_msg_id": message_data.quote_msg_id,
+                "quote_msg_text": message_data.content.quote_msg_text
             }
             
             print(f"Processed push message - Type: {msg_info['content_type']}, ID: {msg_info['msg_id']} from {msg_info['sender_name']}")
