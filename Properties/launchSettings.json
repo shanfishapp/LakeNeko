@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "yhchatapp (Package)": {
+      "commandName": "MsixPackage"
+    },
+    "yhchatapp (Unpackaged)": {
+      "commandName": "Project"
+    }
+  }
+}
